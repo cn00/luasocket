@@ -20,14 +20,16 @@ PLAT?=linux
 # lua version to build against
 LUAV?=5.1
 
+# MYCFLAGS: to be set by user if needed
+MYCFLAGS?=
+
+# MYLDFLAGS: to be set by user if needed
+MYLDFLAGS?=
+
 # DEBUG: NODEBUG DEBUG
 # debug mode causes luasocket to collect and returns timing information useful
 # for testing and debugging luasocket itself
 DEBUG?=NODEBUG
-
-# COMPAT: COMPAT NOCOMPAT
-# when compiling for 5.2, use LUA_COMPAT_MODULE
-COMPAT?=NOCOMPAT
 
 # where lua headers are found for macosx builds
 # LUAINC_macosx:
@@ -40,7 +42,6 @@ LUAPREFIX_macosx?=/opt/local
 CDIR_macosx?=lib/lua/$(LUAV)
 LDIR_macosx?=share/lua/$(LUAV)
 
-
 # LUAINC_linux:
 # /usr/include/lua$(LUAV)
 # /usr/local/include
@@ -52,8 +53,17 @@ LUAPREFIX_linux?=/usr/local
 CDIR_linux?=lib/lua/$(LUAV)
 LDIR_linux?=share/lua/$(LUAV)
 
+# LUAINC_freebsd:
+# /usr/local/include/lua$(LUAV)
+# where lua headers are found for freebsd builds
+LUAINC_freebsd_base?=/usr/local/include/
+LUAINC_freebsd?=$(LUAINC_freebsd_base)/lua$(LUAV)
+LUAPREFIX_freebsd?=/usr/local/
+CDIR_freebsd?=lib/lua/$(LUAV)
+LDIR_freebsd?=share/lua/$(LUAV)
+
 # where lua headers are found for mingw builds
-# LUAINC_mingw: 
+# LUAINC_mingw:
 # /opt/local/include
 LUAINC_mingw_base?=/usr/include
 LUAINC_mingw?=$(LUAINC_mingw_base)/lua/$(LUAV)
@@ -67,13 +77,21 @@ LDIR_mingw?=lua/$(LUAV)/lua
 # LUAINC_win32:
 # LUALIB_win32:
 # where lua headers and libraries are found for win32 builds
-LUAINC_win32_base?=
-LUAINC_win32?=$(LUAINC_win32_base)/lua/$(LUAV)
-PLATFORM_win32?=Release
 LUAPREFIX_win32?=
-CDIR_win32?=lua/$(LUAV)/$(PLATFORM_win32)
-LDIR_win32?=lua/$(LUAV)/$(PLATFORM_win32)/lua
-LUALIB_win32?=$(LUAPREFIX_win32)/lua/$(LUAV)/$(PLATFORM_win32)
+LUAINC_win32?=$(LUAPREFIX_win32)/include/lua/$(LUAV)
+PLATFORM_win32?=Release
+CDIR_win32?=bin/lua/$(LUAV)/$(PLATFORM_win32)
+LDIR_win32?=bin/lua/$(LUAV)/$(PLATFORM_win32)/lua
+LUALIB_win32?=$(LUAPREFIX_win32)/lib/lua/$(LUAV)/$(PLATFORM_win32)
+LUALIBNAME_win32?=lua$(subst .,,$(LUAV)).lib 
+
+
+# LUAINC_solaris:
+LUAINC_solaris_base?=/usr/include
+LUAINC_solaris?=$(LUAINC_solaris_base)/lua/$(LUAV)
+LUAPREFIX_solaris?=/usr/local
+CDIR_solaris?=lib/lua/$(LUAV)
+LDIR_solaris?=share/lua/$(LUAV)
 
 # prefix: /usr/local /usr /opt/local /sw
 # the top of the default install tree
@@ -84,7 +102,7 @@ LDIR?=$(LDIR_$(PLAT))
 
 # DESTDIR: (no default)
 # used by package managers to install into a temporary destination
-DESTDIR=
+DESTDIR?=
 
 #------
 # Definitions below can be overridden on the make command line, but
@@ -117,11 +135,13 @@ print:
 	@echo LUALIB_$(PLAT)=$(LUALIB_$(PLAT))
 	@echo INSTALL_TOP_CDIR=$(INSTALL_TOP_CDIR)
 	@echo INSTALL_TOP_LDIR=$(INSTALL_TOP_LDIR)
+	@echo CFLAGS=$(CFLAGS)
+	@echo LDFLAGS=$(LDFLAGS)
 
 #------
 # Supported platforms
 #
-PLATS= macosx linux win32 mingw
+PLATS= macosx linux win32 mingw solaris
 
 #------
 # Compiler and linker settings
@@ -129,11 +149,11 @@ PLATS= macosx linux win32 mingw
 SO_macosx=so
 O_macosx=o
 CC_macosx=gcc
-DEF_macosx= -DLUASOCKET_$(DEBUG) -DUNIX_HAS_SUN_LEN -DLUA_$(COMPAT)_MODULE \
+DEF_macosx= -DLUASOCKET_$(DEBUG) -DUNIX_HAS_SUN_LEN \
 	-DLUASOCKET_API='__attribute__((visibility("default")))' \
 	-DUNIX_API='__attribute__((visibility("default")))' \
 	-DMIME_API='__attribute__((visibility("default")))'
-CFLAGS_macosx= -I$(LUAINC) $(DEF) -pedantic -Wall -O2 -fno-common \
+CFLAGS_macosx= -I$(LUAINC) $(DEF) -Wall -O2 -fno-common \
 	-fvisibility=hidden
 LDFLAGS_macosx= -bundle -undefined dynamic_lookup -o 
 LD_macosx= export MACOSX_DEPLOYMENT_TARGET="10.3"; gcc
@@ -145,11 +165,11 @@ SOCKET_macosx=usocket.o
 SO_linux=so
 O_linux=o
 CC_linux=gcc
-DEF_linux=-DLUASOCKET_$(DEBUG) -DLUA_$(COMPAT)_MODULE \
+DEF_linux=-DLUASOCKET_$(DEBUG) \
 	-DLUASOCKET_API='__attribute__((visibility("default")))' \
 	-DUNIX_API='__attribute__((visibility("default")))' \
 	-DMIME_API='__attribute__((visibility("default")))'
-CFLAGS_linux= -I$(LUAINC) $(DEF) -pedantic -Wall -Wshadow -Wextra \
+CFLAGS_linux= -I$(LUAINC) $(DEF) -Wall -Wshadow -Wextra \
 	-Wimplicit -O2 -ggdb3 -fpic -fvisibility=hidden
 LDFLAGS_linux=-O -shared -fpic -o 
 LD_linux=gcc
@@ -157,14 +177,46 @@ SOCKET_linux=usocket.o
 
 #------
 # Compiler and linker settings
+# for FreeBSD
+SO_freebsd=so
+O_freebsd=o
+CC_freebsd=gcc
+DEF_freebsd=-DLUASOCKET_$(DEBUG) \
+	-DLUASOCKET_API='__attribute__((visibility("default")))' \
+	-DUNIX_API='__attribute__((visibility("default")))' \
+	-DMIME_API='__attribute__((visibility("default")))'
+CFLAGS_freebsd= -I$(LUAINC) $(DEF) -Wall -Wshadow -Wextra \
+	-Wimplicit -O2 -ggdb3 -fpic -fvisibility=hidden
+LDFLAGS_freebsd=-O -shared -fpic -o 
+LD_freebsd=gcc
+SOCKET_freebsd=usocket.o
+
+#------
+# Compiler and linker settings
+# for Solaris
+SO_solaris=so
+O_solaris=o
+CC_solaris=gcc
+DEF_solaris=-DLUASOCKET_$(DEBUG) \
+	-DLUASOCKET_API='__attribute__((visibility("default")))' \
+	-DUNIX_API='__attribute__((visibility("default")))' \
+	-DMIME_API='__attribute__((visibility("default")))'
+CFLAGS_solaris=-I$(LUAINC) $(DEF) -Wall -Wshadow -Wextra \
+	-Wimplicit -O2 -ggdb3 -fpic -fvisibility=hidden   
+LDFLAGS_solaris=-lnsl -lsocket -lresolv -O -shared -fpic -o 
+LD_solaris=gcc
+SOCKET_solaris=usocket.o
+
+#------
+# Compiler and linker settings
 # for MingW
 SO_mingw=dll
 O_mingw=o
 CC_mingw=gcc
-DEF_mingw= -DLUASOCKET_INET_PTON -DLUASOCKET_$(DEBUG) -DLUA_$(COMPAT)_MODULE \
+DEF_mingw= -DLUASOCKET_INET_PTON -DLUASOCKET_$(DEBUG) \
 	-DWINVER=0x0501 -DLUASOCKET_API='__declspec(dllexport)' \
 	-DMIME_API='__declspec(dllexport)'
-CFLAGS_mingw= -I$(LUAINC) $(DEF) -pedantic -Wall -O2 -fno-common \
+CFLAGS_mingw= -I$(LUAINC) $(DEF) -Wall -O2 -fno-common \
 	-fvisibility=hidden
 LDFLAGS_mingw= $(LUALIB) -shared -Wl,-s -lws2_32 -o 
 LD_mingw=gcc
@@ -179,8 +231,7 @@ O_win32=obj
 CC_win32=cl
 DEF_win32= //D "WIN32" //D "NDEBUG" //D "_WINDOWS" //D "_USRDLL" \
      //D "LUASOCKET_API=__declspec(dllexport)" //D "_CRT_SECURE_NO_WARNINGS" \
-     //D "_WINDLL" //D "LUA_$(COMPAT)_MODULE" \
-	 //D "MIME_API=__declspec(dllexport)" \
+     //D "_WINDLL" //D "MIME_API=__declspec(dllexport)" \
      //D "LUASOCKET_$(DEBUG)" 
 CFLAGS_win32=//I "$(LUAINC)" $(DEF) //O2 //Ot //MD //W3 //nologo
 LDFLAGS_win32= //nologo //link //NOLOGO //DLL //INCREMENTAL:NO \
@@ -188,7 +239,7 @@ LDFLAGS_win32= //nologo //link //NOLOGO //DLL //INCREMENTAL:NO \
     //MANIFESTUAC:"level='asInvoker' uiAccess='false'" \
 	//SUBSYSTEM:WINDOWS //OPT:REF //OPT:ICF //DYNAMICBASE:NO \
     //MACHINE:X86 /LIBPATH:"$(shell cmd //c echo $(LUALIB))" \
-	lua$(subst .,,$(LUAV)).lib ws2_32.lib //OUT:
+	$(LUALIBNAME_win32) ws2_32.lib //OUT:
 LD_win32=cl
 SOCKET_win32=wsocket.obj
 
@@ -204,8 +255,8 @@ SO=$(SO_$(PLAT))
 O=$(O_$(PLAT))
 SOCKET_V=3.0-rc1
 MIME_V=1.0.3
-SOCKET_SO=socket.$(SO).$(SOCKET_V)
-MIME_SO=mime.$(SO).$(MIME_V)
+SOCKET_SO=socket-$(SOCKET_V).$(SO)
+MIME_SO=mime-$(MIME_V).$(SO)
 UNIX_SO=unix.$(SO)
 SERIAL_SO=serial.$(SO)
 SOCKET=$(SOCKET_$(PLAT))
@@ -215,8 +266,8 @@ SOCKET=$(SOCKET_$(PLAT))
 #
 CC=$(CC_$(PLAT))
 DEF=$(DEF_$(PLAT))
-CFLAGS=$(CFLAGS_$(PLAT))
-LDFLAGS=$(LDFLAGS_$(PLAT))
+CFLAGS=$(MYCFLAGS) $(CFLAGS_$(PLAT))
+LDFLAGS=$(MYLDFLAGS) $(LDFLAGS_$(PLAT))
 LD=$(LD_$(PLAT))
 LUAINC= $(LUAINC_$(PLAT))
 LUALIB= $(LUALIB_$(PLAT))
@@ -230,6 +281,7 @@ SOCKET_OBJS= \
 	buffer.$(O) \
 	io.$(O) \
 	auxiliar.$(O) \
+	compat.$(O) \
 	options.$(O) \
 	inet.$(O) \
 	$(SOCKET) \
@@ -242,7 +294,8 @@ SOCKET_OBJS= \
 # Modules belonging mime-core
 #
 MIME_OBJS= \
-	mime.$(O)
+	mime.$(O) \
+	compat.$(O)
 
 #------
 # Modules belonging unix (local domain sockets)
@@ -254,12 +307,15 @@ UNIX_OBJS=\
 	timeout.$(O) \
 	io.$(O) \
 	usocket.$(O) \
+	unixstream.$(O) \
+	unixdgram.$(O) \
+	compat.$(O) \
 	unix.$(O)
 
 #------
 # Modules belonging to serial (device streams)
 #
-SERIAL_OBJS:=\
+SERIAL_OBJS=\
 	buffer.$(O) \
 	auxiliar.$(O) \
 	options.$(O) \
@@ -289,6 +345,10 @@ TO_TOP_LDIR= \
 #
 default: $(PLAT)
 
+
+freebsd:
+	$(MAKE) all-unix PLAT=freebsd
+
 macosx:
 	$(MAKE) all-unix PLAT=macosx
 
@@ -300,6 +360,9 @@ linux:
 
 mingw:
 	$(MAKE) all PLAT=mingw
+	
+solaris:
+	$(MAKE) all-unix PLAT=solaris
 
 none:
 	@echo "Please run"
@@ -323,7 +386,7 @@ $(UNIX_SO): $(UNIX_OBJS)
 $(SERIAL_SO): $(SERIAL_OBJS)
 	$(LD) $(SERIAL_OBJS) $(LDFLAGS)$@
 
-install: 
+install:
 	$(INSTALL_DIR) $(INSTALL_TOP_LDIR)
 	$(INSTALL_DATA) $(TO_TOP_LDIR) $(INSTALL_TOP_LDIR)
 	$(INSTALL_DIR) $(INSTALL_SOCKET_LDIR)
@@ -349,6 +412,7 @@ clean:
 #------
 # List of dependencies
 #
+compat.$(O): compat.c compat.h
 auxiliar.$(O): auxiliar.c auxiliar.h
 buffer.$(O): buffer.c buffer.h io.h timeout.h
 except.$(O): except.c except.h
